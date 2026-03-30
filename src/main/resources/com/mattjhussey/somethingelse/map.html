@@ -49,6 +49,67 @@
     function clearAircraft() {
         aircraftLayer.clearLayers();
     }
+
+    // Easter egg: type the Konami code (↑ ↑ ↓ ↓ ← → ← → B A) to reveal a secret
+    (function () {
+        var sequence = [38, 38, 40, 40, 37, 39, 37, 39, 66, 65];
+        var pos = 0;
+        document.addEventListener('keydown', function (e) {
+            if (e.keyCode === sequence[pos]) {
+                pos++;
+                if (pos === sequence.length) {
+                    pos = 0;
+                    showLove();
+                }
+            } else {
+                pos = (e.keyCode === sequence[0]) ? 1 : 0;
+            }
+        });
+
+        function showLove() {
+            var overlay = document.createElement('div');
+            overlay.style.cssText = [
+                'position:fixed', 'inset:0', 'display:flex', 'flex-direction:column',
+                'align-items:center', 'justify-content:center',
+                'background:rgba(0,0,0,0.55)', 'z-index:9999',
+                'font-family:sans-serif', 'color:#fff', 'text-align:center',
+                'animation:fadeIn 0.4s ease'
+            ].join(';');
+
+            var hearts = document.createElement('div');
+            hearts.style.cssText = 'font-size:72px;animation:pulse 0.8s infinite alternate';
+            hearts.textContent = '✈️ ❤️ ✈️';
+
+            var msg = document.createElement('div');
+            msg.style.cssText = 'font-size:28px;font-weight:bold;margin-top:16px;text-shadow:0 2px 8px rgba(0,0,0,0.5)';
+            msg.textContent = 'I love you too!';
+
+            var sub = document.createElement('div');
+            sub.style.cssText = 'font-size:16px;margin-top:8px;opacity:0.8';
+            sub.textContent = '(now get back to tracking planes ✈)';
+
+            overlay.appendChild(hearts);
+            overlay.appendChild(msg);
+            overlay.appendChild(sub);
+            document.body.appendChild(overlay);
+
+            var style = document.createElement('style');
+            style.textContent = [
+                '@keyframes fadeIn{from{opacity:0}to{opacity:1}}',
+                '@keyframes pulse{from{transform:scale(1)}to{transform:scale(1.15)}}'
+            ].join('');
+            document.head.appendChild(style);
+
+            setTimeout(function () {
+                overlay.style.transition = 'opacity 0.8s';
+                overlay.style.opacity = '0';
+                setTimeout(function () {
+                    document.body.removeChild(overlay);
+                    document.head.removeChild(style);
+                }, 800);
+            }, 3500);
+        }
+    }());
 </script>
 </body>
 </html>
