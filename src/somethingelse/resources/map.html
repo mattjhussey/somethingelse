@@ -31,10 +31,10 @@
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(map);
 
-    // Layer group for aircraft markers – populated by the Java layer via WebEngine.executeScript()
+    // Layer group for aircraft markers – populated by the Python backend via pywebview
     var aircraftLayer = L.layerGroup().addTo(map);
 
-    // Expose a function so the Java backend can push aircraft positions
+    // Expose a function so the Python backend can push aircraft positions
     function updateAircraft(icao, lat, lon, callsign, altitude) {
         var marker = L.circleMarker([lat, lon], {
             radius: 6,

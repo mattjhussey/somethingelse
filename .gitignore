@@ -1,6 +1,14 @@
-# Build output
-build/
-.gradle/
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+uv.lock
 
 # IDE files
 .idea/
@@ -10,10 +18,6 @@ build/
 .classpath
 .project
 .settings/
-*.class
 
 # macOS
 .DS_Store
-
-# Gradle wrapper (keep the jar in VCS)
-!gradle/wrapper/gradle-wrapper.jar
