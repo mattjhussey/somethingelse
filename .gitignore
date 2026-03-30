@@ -1,0 +1,19 @@
+# Build output
+build/
+.gradle/
+
+# IDE files
+.idea/
+*.iml
+*.iws
+*.ipr
+.classpath
+.project
+.settings/
+*.class
+
+# macOS
+.DS_Store
+
+# Gradle wrapper (keep the jar in VCS)
+!gradle/wrapper/gradle-wrapper.jar
