@@ -51,6 +51,7 @@ class AircraftTrackerApi:
         altitude: int,
         heading: int = 0,
         on_ground: bool = False,
+        speed_knots: float = 0.0,
     ) -> None:
         """Add or refresh an aircraft marker on the map."""
         window = self._window_ref[0] if self._window_ref else None
@@ -64,7 +65,8 @@ class AircraftTrackerApi:
         )
         js = (
             f"updateAircraft('{icao}', {lat}, {lon}, '{callsign_safe}',"
-            f" {altitude}, {heading}, {'true' if on_ground else 'false'});"
+            f" {altitude}, {heading}, {'true' if on_ground else 'false'},"
+            f" {speed_knots});"
         )
         window.evaluate_js(js)
 
@@ -91,10 +93,7 @@ class AircraftTrackerApi:
     def _adsb_loop(self) -> None:
         while not self._stop_event.is_set():
             try:
-                aircraft_list = adsb.fetch_aircraft_in_bounds(
-                    adsb.UK_LAT_MIN, adsb.UK_LON_MIN,
-                    adsb.UK_LAT_MAX, adsb.UK_LON_MAX,
-                )
+                aircraft_list = adsb.fetch_all_aircraft()
                 self.clear_aircraft()
                 for a in aircraft_list:
                     self.update_aircraft(
@@ -105,6 +104,7 @@ class AircraftTrackerApi:
                         int(a.altitude_feet),
                         int(a.heading_degrees),
                         a.on_ground,
+                        round(a.speed_knots, 1),
                     )
                 logger.info("ADSB refresh: %d aircraft", len(aircraft_list))
             except Exception:

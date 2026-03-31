@@ -50,6 +50,11 @@ class TestAircraftTrackerApi:
         api = app_module.AircraftTrackerApi([])
         api.update_aircraft("ABC123", 51.5, -0.1, "SPEED1", 35000, 90, False)
 
+    def test_update_aircraft_with_speed_no_window_does_not_raise(self) -> None:
+        """Calling update_aircraft with speed_knots and no window should be a silent no-op."""
+        api = app_module.AircraftTrackerApi([])
+        api.update_aircraft("SPD001", 51.5, -0.1, "FAST1", 35000, 90, False, 450.0)
+
     def test_update_aircraft_on_ground_no_window_does_not_raise(self) -> None:
         """Calling update_aircraft for a grounded aircraft should be a silent no-op."""
         api = app_module.AircraftTrackerApi([])

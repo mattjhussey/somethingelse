@@ -63,6 +63,12 @@ class TestParseAircraftStates:
         assert pytest.approx(a.velocity_mps, abs=0.1) == 245.4
         assert pytest.approx(a.heading_degrees, abs=0.1) == 92.0
 
+    def test_speed_knots_derived_from_velocity_mps(self) -> None:
+        result = adsb._parse_aircraft_states(json.dumps(SAMPLE_RESPONSE))
+        a = result[0]
+        expected_knots = a.velocity_mps * adsb.MPS_TO_KNOTS
+        assert pytest.approx(a.speed_knots, rel=1e-4) == expected_knots
+
     def test_altitude_converted_from_metres(self) -> None:
         result = adsb._parse_aircraft_states(json.dumps(SAMPLE_RESPONSE))
         a = result[0]
@@ -117,6 +123,8 @@ class TestAircraftDataclass:
             on_ground=False,
             velocity_mps=250.0,
             heading_degrees=90.0,
+            speed_knots=250.0 * adsb.MPS_TO_KNOTS,
         )
         assert a.icao24 == "aaa111"
         assert a.on_ground is False
+        assert pytest.approx(a.speed_knots, rel=1e-4) == 250.0 * adsb.MPS_TO_KNOTS
