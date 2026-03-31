@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>UK Live Map</title>
+    <title>Aircraft Tracker – Live Map</title>
     <link rel="stylesheet" href="leaflet.css"/>
     <script src="leaflet.js"></script>
     <style>
@@ -12,18 +12,120 @@
             padding: 0;
             height: 100%;
             width: 100%;
+            display: flex;
+            overflow: hidden;
         }
         #map {
+            flex: 1;
             height: 100%;
-            width: 100%;
+        }
+        #aircraft-panel {
+            width: 260px;
+            min-width: 260px;
+            height: 100%;
+            background: #1a1a2e;
+            color: #eee;
+            display: flex;
+            flex-direction: column;
+            border-left: 2px solid #0f3460;
+            font-family: sans-serif;
+            font-size: 13px;
+        }
+        #panel-header {
+            padding: 10px 12px;
+            background: #16213e;
+            border-bottom: 1px solid #0f3460;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        #panel-title {
+            font-weight: bold;
+            font-size: 14px;
+            flex: 1;
+        }
+        #aircraft-count {
+            background: #0f3460;
+            border-radius: 10px;
+            padding: 2px 8px;
+            font-size: 12px;
+        }
+        #clear-trails-btn {
+            background: #e74c3c;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            padding: 3px 8px;
+            font-size: 11px;
+            cursor: pointer;
+        }
+        #clear-trails-btn:hover {
+            background: #c0392b;
+        }
+        #aircraft-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+        #aircraft-list::-webkit-scrollbar {
+            width: 6px;
+        }
+        #aircraft-list::-webkit-scrollbar-track {
+            background: #1a1a2e;
+        }
+        #aircraft-list::-webkit-scrollbar-thumb {
+            background: #0f3460;
+            border-radius: 3px;
+        }
+        .aircraft-item {
+            padding: 7px 12px;
+            border-bottom: 1px solid #0f3460;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: background 0.15s;
+        }
+        .aircraft-item:hover {
+            background: #0f3460;
+        }
+        .aircraft-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+        .aircraft-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .aircraft-callsign {
+            font-weight: bold;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .aircraft-details {
+            color: #aaa;
+            font-size: 11px;
+            margin-top: 1px;
         }
     </style>
 </head>
 <body>
 <div id="map"></div>
+<div id="aircraft-panel">
+    <div id="panel-header">
+        <span id="panel-title">✈ Aircraft</span>
+        <span id="aircraft-count">0</span>
+        <button id="clear-trails-btn" onclick="clearTrails()">Clear trails</button>
+    </div>
+    <div id="aircraft-list"></div>
+</div>
 <script>
-    // Initialise map centred on the United Kingdom
-    var map = L.map('map').setView([54.5, -2.0], 6);
+    // Initialise map
+    var map = L.map('map').setView([20.0, 0.0], 3);
 
     // OpenStreetMap tile layer
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -31,31 +133,179 @@
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(map);
 
-    // Layer group for aircraft markers – populated by the Python backend via pywebview
+    // Layer groups: trails below markers
+    var trailLayer = L.layerGroup().addTo(map);
     var aircraftLayer = L.layerGroup().addTo(map);
 
-    // Expose a function so the Python backend can push aircraft positions
-    // onGround: true when the aircraft is on the ground (shown in grey)
-    function updateAircraft(icao, lat, lon, callsign, altitude, heading, onGround) {
-        var color = onGround ? '#7f8c8d' : '#e74c3c';
+    // Per-aircraft state
+    var aircraftMarkers = {};    // icao -> Leaflet marker
+    var aircraftTrails = {};     // icao -> [[lat, lon], ...]
+    var aircraftPolylines = {};  // icao -> Leaflet polyline
+    var aircraftData = {};       // icao -> {callsign, altitude, speed, lat, lon, onGround, color}
+
+    var MAX_TRAIL_POINTS = 20;   // ~5 minutes at 15 s refresh
+
+    // Debounce timer for panel updates
+    var panelUpdateTimer = null;
+
+    // ---------------------------------------------------------------------------
+    // Colour helpers
+    // ---------------------------------------------------------------------------
+
+    function altitudeColor(altitude, onGround) {
+        if (onGround)       return '#7f8c8d';  // grey
+        if (altitude <  5000) return '#27ae60';  // green   (low)
+        if (altitude < 15000) return '#f1c40f';  // yellow  (medium-low)
+        if (altitude < 25000) return '#e67e22';  // orange  (medium-high)
+        if (altitude < 35000) return '#e74c3c';  // red     (high)
+        return '#8e44ad';                         // purple  (very high)
+    }
+
+    // ---------------------------------------------------------------------------
+    // Core map functions (called by the Python backend)
+    // ---------------------------------------------------------------------------
+
+    function updateAircraft(icao, lat, lon, callsign, altitude, heading, onGround, speed) {
+        speed = (typeof speed === 'number') ? speed : 0;
+        var color = altitudeColor(altitude, onGround);
+        var speedStr = Math.round(speed) + ' kts';
         var tooltip = onGround
-            ? callsign + ' (on ground)'
-            : callsign + ' @ ' + altitude + ' ft';
+            ? callsign + ' (ground)'
+            : callsign + ' | ' + altitude.toLocaleString() + ' ft | ' + speedStr;
+
+        // Remove old marker for this aircraft
+        if (aircraftMarkers[icao]) {
+            aircraftLayer.removeLayer(aircraftMarkers[icao]);
+        }
+
+        // Add refreshed marker
         var marker = L.circleMarker([lat, lon], {
             radius: 6,
             color: color,
             fillColor: color,
-            fillOpacity: 0.8
-        }).bindTooltip(tooltip);
+            fillOpacity: 0.85,
+            weight: 1.5
+        }).bindTooltip(tooltip, { sticky: false });
+
+        marker.on('click', function () { map.setView([lat, lon], 9); });
         aircraftLayer.addLayer(marker);
+        aircraftMarkers[icao] = marker;
+
+        // Append to breadcrumb trail
+        if (!aircraftTrails[icao]) {
+            aircraftTrails[icao] = [];
+        }
+        var trail = aircraftTrails[icao];
+        // Only add point if it differs from the last to avoid static dots
+        var last = trail[trail.length - 1];
+        if (!last || last[0] !== lat || last[1] !== lon) {
+            trail.push([lat, lon]);
+            if (trail.length > MAX_TRAIL_POINTS) {
+                trail.shift();
+            }
+        }
+
+        // Update polyline
+        if (aircraftPolylines[icao]) {
+            trailLayer.removeLayer(aircraftPolylines[icao]);
+        }
+        if (trail.length > 1) {
+            var line = L.polyline(trail, {
+                color: color,
+                weight: 1.5,
+                opacity: 0.5
+            });
+            trailLayer.addLayer(line);
+            aircraftPolylines[icao] = line;
+        }
+
+        // Update data store
+        aircraftData[icao] = {
+            callsign: callsign,
+            altitude: altitude,
+            speed: Math.round(speed),
+            lat: lat,
+            lon: lon,
+            onGround: onGround,
+            color: color
+        };
+
+        scheduleAircraftPanelUpdate();
     }
 
-    // Clear all aircraft markers
     function clearAircraft() {
         aircraftLayer.clearLayers();
+        aircraftMarkers = {};
+        aircraftData = {};
+        scheduleAircraftPanelUpdate();
     }
 
-    // Easter egg: type the Konami code (↑ ↑ ↓ ↓ ← → ← → B A) to reveal a secret
+    // Remove all breadcrumb trails from the map (but not aircraft data)
+    function clearTrails() {
+        trailLayer.clearLayers();
+        aircraftTrails = {};
+        aircraftPolylines = {};
+    }
+
+    // ---------------------------------------------------------------------------
+    // Aircraft list panel
+    // ---------------------------------------------------------------------------
+
+    function scheduleAircraftPanelUpdate() {
+        clearTimeout(panelUpdateTimer);
+        panelUpdateTimer = setTimeout(renderAircraftPanel, 100);
+    }
+
+    function renderAircraftPanel() {
+        var list = document.getElementById('aircraft-list');
+        var countEl = document.getElementById('aircraft-count');
+        var entries = Object.entries(aircraftData);
+        entries.sort(function (a, b) {
+            return a[1].callsign.localeCompare(b[1].callsign);
+        });
+
+        countEl.textContent = entries.length;
+        list.innerHTML = '';
+
+        entries.forEach(function (entry) {
+            var icao = entry[0];
+            var d = entry[1];
+            var item = document.createElement('div');
+            item.className = 'aircraft-item';
+
+            var dot = document.createElement('div');
+            dot.className = 'aircraft-dot';
+            dot.style.background = d.color;
+
+            var info = document.createElement('div');
+            info.className = 'aircraft-info';
+
+            var callsignEl = document.createElement('div');
+            callsignEl.className = 'aircraft-callsign';
+            callsignEl.textContent = d.callsign;
+
+            var detailEl = document.createElement('div');
+            detailEl.className = 'aircraft-details';
+            detailEl.textContent = d.onGround
+                ? 'On ground'
+                : d.altitude.toLocaleString() + ' ft | ' + d.speed + ' kts';
+
+            info.appendChild(callsignEl);
+            info.appendChild(detailEl);
+            item.appendChild(dot);
+            item.appendChild(info);
+
+            item.addEventListener('click', (function (lat, lon) {
+                return function () { map.setView([lat, lon], 9); };
+            }(d.lat, d.lon)));
+
+            list.appendChild(item);
+        });
+    }
+
+    // ---------------------------------------------------------------------------
+    // Easter egg: Konami code (↑ ↑ ↓ ↓ ← → ← → B A)
+    // ---------------------------------------------------------------------------
     (function () {
         var sequence = [38, 38, 40, 40, 37, 39, 37, 39, 66, 65];
         var pos = 0;

@@ -15,6 +15,7 @@ from typing import Any
 
 OPENSKY_API_URL = "https://opensky-network.org/api/states/all"
 METRES_TO_FEET = 3.28084
+MPS_TO_KNOTS = 1.94384
 
 # UK bounding box
 UK_LAT_MIN = 49.0
@@ -35,6 +36,20 @@ class Aircraft:
     on_ground: bool
     velocity_mps: float
     heading_degrees: float
+    speed_knots: float
+
+
+def fetch_all_aircraft() -> list[Aircraft]:
+    """Fetch all aircraft currently tracked globally by the OpenSky Network.
+
+    Returns an empty list on any network or parse error.
+    """
+    req = urllib.request.Request(OPENSKY_API_URL, headers={"Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        if resp.status != 200:
+            return []
+        body = resp.read().decode()
+    return _parse_aircraft_states(body)
 
 
 def fetch_aircraft_in_bounds(
@@ -109,6 +124,7 @@ def _parse_aircraft_states(json_text: str) -> list[Aircraft]:
                 on_ground=on_ground,
                 velocity_mps=velocity_mps,
                 heading_degrees=heading_degrees,
+                speed_knots=velocity_mps * MPS_TO_KNOTS,
             )
         )
     return aircraft
