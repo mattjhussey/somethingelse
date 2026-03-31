@@ -31,17 +31,22 @@
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(map);
 
-    // Layer group for aircraft markers – populated by the Java layer via WebEngine.executeScript()
+    // Layer group for aircraft markers – populated by the Python backend via pywebview
     var aircraftLayer = L.layerGroup().addTo(map);
 
-    // Expose a function so the Java backend can push aircraft positions
-    function updateAircraft(icao, lat, lon, callsign, altitude) {
+    // Expose a function so the Python backend can push aircraft positions
+    // onGround: true when the aircraft is on the ground (shown in grey)
+    function updateAircraft(icao, lat, lon, callsign, altitude, heading, onGround) {
+        var color = onGround ? '#7f8c8d' : '#e74c3c';
+        var tooltip = onGround
+            ? callsign + ' (on ground)'
+            : callsign + ' @ ' + altitude + ' ft';
         var marker = L.circleMarker([lat, lon], {
             radius: 6,
-            color: '#e74c3c',
-            fillColor: '#e74c3c',
+            color: color,
+            fillColor: color,
             fillOpacity: 0.8
-        }).bindTooltip(callsign + ' @ ' + altitude + ' ft');
+        }).bindTooltip(tooltip);
         aircraftLayer.addLayer(marker);
     }
 
